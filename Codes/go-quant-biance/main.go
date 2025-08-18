@@ -3,10 +3,39 @@ package main
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/adshao/go-binance/v2"
 )
+
+type Kline struct {
+	OpenTime time.Time
+	Open     float64
+	High     float64
+	Low      float64
+	Close    float64
+	Volume   float64
+}
+
+func calculateSMA(prices []float64, period int) (float64, error) {
+
+	if period <= 0 {
+		return 0, fmt.Errorf("週期必須大於 0")
+	}
+
+	if length := len(prices); length < period {
+		return 0, fmt.Errorf("樹據點不足，需要 %d 個，但只有 %d 個", period, length)
+	}
+
+	var sum float64 = 0
+
+	for _, price := range prices {
+		sum += price
+	}
+
+	return sum / float64(period), nil
+}
 
 func main() {
 	fmt.Println("--- 使用 go-binance SDK 獲取數據 ---")
@@ -20,7 +49,7 @@ func main() {
 	// .Limit(5)          - 指定獲取最近 5 根 K 線
 	// .Do(context.Background()) - 執行請求
 
-	klines, err := client.NewKlinesService().Symbol("BTCUSDT").Interval("1h").Limit(5).Do(context.Background())
+	bianceKline, err := client.NewKlinesService().Symbol("BTCUSDT").Interval("1h").Limit(20).Do(context.Background())
 
 	// 錯誤處理
 	if err != nil {
@@ -28,17 +57,49 @@ func main() {
 		return
 	}
 
+	var klines []Kline
+
 	// klines 是一個包含了 K 線數據的切片，讓我們遍歷它並印出
 	fmt.Println("成功獲取 BTC/USDT 最近 5 根 1 小時 K 線:")
+	for _, k := range bianceKline {
+
+		open, _ := strconv.ParseFloat(k.Open, 64)
+		close, _ := strconv.ParseFloat(k.Close, 64)
+		low, _ := strconv.ParseFloat(k.Low, 64)
+		high, _ := strconv.ParseFloat(k.High, 64)
+		volume, _ := strconv.ParseFloat(k.Volume, 64)
+
+		klines = append(klines, Kline{
+			OpenTime: time.Unix(k.OpenTime/1000, 0),
+			Open:     open,
+			Close:    close,
+			Low:      low,
+			High:     high,
+			Volume:   volume,
+		})
+	}
+
+	fmt.Printf("成功轉換並儲存了 %d 根 K 線資料。\n", len(klines))
+	fmt.Println("------------------------------------")
+
+	// 從我們自己的資料結構中提取資料並進行計算
+	var closingPrices []float64
 	for _, k := range klines {
-		fmt.Printf(
-			"開盤時間: %s, 開盤價: %s, 最高價: %s, 最低價: %s, 收盤價: %s\n",
-			// k.OpenTime 是毫秒時間戳，我們需要將它轉換成人類可讀的格式
-			time.Unix(k.OpenTime/1000, 0).Format("2006-01-02 15:04:05"),
-			k.Open,
-			k.High,
-			k.Low,
-			k.Close,
-		)
+		closingPrices = append(closingPrices, k.Close)
+	}
+
+	// 呼叫第 2 天的函式來計算 SMA
+	sma5, err := calculateSMA(closingPrices, 5)
+	if err != nil {
+		fmt.Println("計算 5MA 失敗:", err)
+	} else {
+		fmt.Printf("最新的 5 週期 SMA 是: %.2f\n", sma5)
+	}
+
+	sma10, err := calculateSMA(closingPrices, 10)
+	if err != nil {
+		fmt.Println("計算 10MA 失敗:", err)
+	} else {
+		fmt.Printf("最新的 10 週期 SMA 是: %.2f\n", sma10)
 	}
 }
