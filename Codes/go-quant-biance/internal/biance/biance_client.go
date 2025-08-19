@@ -30,16 +30,16 @@ func (bc *BianceClient) GetKlineDetail(dto FetchKlineDetailDto) []Kline {
 
 	for _, k := range bianceKline {
 
-		open, _ := strconv.ParseFloat(k.Open, 64)
-		close, _ := strconv.ParseFloat(k.Close, 64)
+		openPrice, _ := strconv.ParseFloat(k.Open, 64)
+		closingPrice, _ := strconv.ParseFloat(k.Close, 64)
 		low, _ := strconv.ParseFloat(k.Low, 64)
 		high, _ := strconv.ParseFloat(k.High, 64)
 		volume, _ := strconv.ParseFloat(k.Volume, 64)
 
 		klines = append(klines, Kline{
 			OpenTime: time.Unix(k.OpenTime/1000, 0),
-			Open:     open,
-			Close:    close,
+			Open:     openPrice,
+			Close:    closingPrice,
 			Low:      low,
 			High:     high,
 			Volume:   volume,
