@@ -49,7 +49,7 @@ func main() {
 	// .Limit(5)          - 指定獲取最近 5 根 K 線
 	// .Do(context.Background()) - 執行請求
 
-	bianceKline, err := client.NewKlinesService().Symbol("BTCUSDT").Interval("1h").Limit(20).Do(context.Background())
+	bianceKline, err := client.NewKlinesService().Symbol("BTCUSDT").Interval("4h").Limit(1000).Do(context.Background())
 
 	// 錯誤處理
 	if err != nil {
@@ -58,6 +58,7 @@ func main() {
 	}
 
 	var klines []Kline
+	var closingPrices []float64
 
 	// klines 是一個包含了 K 線數據的切片，讓我們遍歷它並印出
 	fmt.Println("成功獲取 BTC/USDT 最近 5 根 1 小時 K 線:")
@@ -77,29 +78,52 @@ func main() {
 			High:     high,
 			Volume:   volume,
 		})
+
+		closingPrices = append(closingPrices, close)
 	}
 
-	fmt.Printf("成功轉換並儲存了 %d 根 K 線資料。\n", len(klines))
-	fmt.Println("------------------------------------")
+	// --- 2. 策略邏輯與訊號產生 ---
+	fastPeriod := 10 // 快線週期
+	slowPeriod := 20 // 慢線週期
 
-	// 從我們自己的資料結構中提取資料並進行計算
-	var closingPrices []float64
-	for _, k := range klines {
-		closingPrices = append(closingPrices, k.Close)
-	}
+	fmt.Printf("開始檢測週期為 %d 和 %d 的均線交叉訊號...\n\n", fastPeriod, slowPeriod)
 
-	// 呼叫第 2 天的函式來計算 SMA
-	sma5, err := calculateSMA(closingPrices, 5)
-	if err != nil {
-		fmt.Println("計算 5MA 失敗:", err)
-	} else {
-		fmt.Printf("最新的 5 週期 SMA 是: %.2f\n", sma5)
-	}
+	for i := slowPeriod; i < len(closingPrices); i++ {
+		// 獲取當前時間點可用的所有歷史價格
+		pricesSoFar := closingPrices[:i+1]
 
-	sma10, err := calculateSMA(closingPrices, 10)
-	if err != nil {
-		fmt.Println("計算 10MA 失敗:", err)
-	} else {
-		fmt.Printf("最新的 10 週期 SMA 是: %.2f\n", sma10)
+		// 計算當前的快線和慢線
+		fastMA, _ := calculateSMA(pricesSoFar, fastPeriod)
+		slowMA, _ := calculateSMA(pricesSoFar, slowPeriod)
+
+		// 獲取上一時間點的歷史價格
+		pricesPrev := closingPrices[:i]
+
+		// 計算上一根 K 線的快線和慢線
+		prevFastMA, _ := calculateSMA(pricesPrev, fastPeriod)
+		prevSlowMA, _ := calculateSMA(pricesPrev, slowPeriod)
+
+		// --- 核心判斷邏輯 ---
+		// 判斷黃金交叉: 上一刻快線在慢線下方，且當前快線在慢線上方
+		if prevFastMA < prevSlowMA && fastMA > slowMA {
+			fmt.Printf(
+				"[買入訊號] 黃金交叉! 時間: %s, 收盤價: %.2f, 快線: %.2f, 慢線: %.2f\n",
+				klines[i].OpenTime.Format("2006-01-02 15:04"),
+				klines[i].Close,
+				fastMA,
+				slowMA,
+			)
+		}
+
+		// 判斷死亡交叉: 上一刻快線在慢線上方，且當前快線在慢線下方
+		if prevFastMA > prevSlowMA && fastMA < slowMA {
+			fmt.Printf(
+				"[賣出訊號] 死亡交叉! 時間: %s, 收盤價: %.2f, 快線: %.2f, 慢線: %.2f\n",
+				klines[i].OpenTime.Format("2006-01-02 15:04"),
+				klines[i].Close,
+				fastMA,
+				slowMA,
+			)
+		}
 	}
 }
